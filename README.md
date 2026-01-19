@@ -62,23 +62,21 @@ Converts a Markdown string to an ADF document object.
 ### Types
 
 ```python
-from marklassian import AdfDocument, AdfNode, AdfMark
+class AdfMark(TypedDict, total=False):
+    type: Required[str]
+    attrs: dict[str, Any]
 
-# AdfDocument is a TypedDict with:
-# - version: Literal[1]
-# - type: Literal["doc"]
-# - content: list[AdfNode]
+class AdfNode(TypedDict, total=False):
+    type: Required[str]
+    attrs: dict[str, Any]
+    content: list[AdfNode]
+    marks: list[AdfMark]
+    text: str
 
-# AdfNode is a TypedDict with:
-# - type: str (required)
-# - attrs: dict[str, Any] (optional)
-# - content: list[AdfNode] (optional)
-# - marks: list[AdfMark] (optional)
-# - text: str (optional)
-
-# AdfMark is a TypedDict with:
-# - type: str (required)
-# - attrs: dict[str, Any] (optional)
+class AdfDocument(TypedDict):
+    version: Literal[1]
+    type: Literal["doc"]
+    content: list[AdfNode]
 ```
 
 ## Caveats
