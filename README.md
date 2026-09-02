@@ -8,7 +8,6 @@ This is a Python port of the excellent [marklassian](https://github.com/jamsincl
 
 - Convert Markdown to ADF with a single function call
 - Support for common Markdown syntax including GFM task lists
-- Optional Jira account mentions
 - Minimal dependencies (only [mistune](https://github.com/lepture/mistune))
 - Full type hints for IDE support
 - Python 3.10+
@@ -60,14 +59,6 @@ print(json.dumps(adf, indent=2))
 
 Converts a Markdown string to an ADF document object.
 
-### Jira account mentions
-
-Pass `jira_mentions=True` to convert Jira wiki mentions into ADF mention nodes:
-
-`markdown_to_adf("Hi [~accountId:557057:user-id]", jira_mentions=True)`
-
-This option is disabled by default. Code and escaped mention syntax remain unchanged.
-
 ### Types
 
 ```python
@@ -87,6 +78,14 @@ class AdfDocument(TypedDict):
     type: Literal["doc"]
     content: list[AdfNode]
 ```
+
+### Jira account mentions
+
+Pass `jira_mentions=True` to convert Jira wiki mentions into ADF mention nodes:
+
+`markdown_to_adf("Hi [~accountId:557057:user-id]", jira_mentions=True)`
+
+This option is disabled by default. Code and escaped mention syntax remain unchanged.
 
 ## Caveats
 
