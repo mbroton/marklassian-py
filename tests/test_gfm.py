@@ -35,6 +35,29 @@ def test_jira_mentions_work_in_gfm_non_list_block_contexts(
     assert _mention_ids(result) == ["heading", "blockquote", "table"]
 
 
+def test_jira_mention_pipe_ids_remain_literal_in_gfm_tables(
+    adf_validator: Validator,
+) -> None:
+    result = cast(
+        dict[str, Any],
+        markdown_to_adf(
+            "| Mention |\n"
+            "| --- |\n"
+            "| [~accountId:opaque\\|id] |",
+            jira_mentions=True,
+        ),
+    )
+
+    adf_validator.validate(result)
+    assert _mention_ids(result) == []
+    assert result["content"][0]["content"][1]["content"][0]["content"] == [
+        {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "[~accountId:opaque|id]"}],
+        },
+    ]
+
+
 def test_jira_mentions_work_in_tight_gfm_lists(adf_validator: Validator) -> None:
     result = cast(
         dict[str, Any],

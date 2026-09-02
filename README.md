@@ -67,13 +67,17 @@ Markdown output. Set `jira_mentions=True` to convert
 `[~accountId:<opaque-id>]` into an inline ADF `mention` node with only
 `attrs.id`.
 
-`accountId` is case-insensitive; the account ID itself is preserved exactly and
-may contain embedded colons. It must be non-empty and cannot contain whitespace,
-a backslash, or `]`. Malformed forms, bare `@Name` text, escaped forms, and
-inline or fenced code remain literal. Mention-looking text in link labels and
-image alt text also remains non-semantic. When a mention appears inside Markdown
-formatting, surrounding text retains its formatting but the ADF mention is bare
-and has no marks.
+`accountId` is ASCII-case-insensitive; the account ID itself is preserved exactly
+and may contain embedded colons. It must be non-empty and cannot contain
+whitespace, a backslash, or `]`. Malformed forms, bare `@Name` text, escaped
+forms, and inline or fenced code remain literal. Mention-looking text in link
+labels and image alt text also remains non-semantic. When a mention appears
+inside Markdown formatting, surrounding text retains its formatting but the ADF
+mention is bare and has no marks.
+
+IDs containing `|` cannot be used as mentions in GFM table cells: an unescaped
+pipe is a cell delimiter, while an escaped pipe (`\|`) contains a backslash and
+therefore remains literal rather than producing a mention.
 
 ### Types
 
