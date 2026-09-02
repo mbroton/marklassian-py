@@ -7,6 +7,75 @@ from jsonschema.protocols import Validator
 from marklassian import markdown_to_adf
 
 
+def _mention_ids(node: dict[str, Any]) -> list[str]:
+    mention_ids = []
+    if node.get("type") == "mention":
+        mention_ids.append(node["attrs"]["id"])
+    for child in node.get("content", []):
+        mention_ids.extend(_mention_ids(child))
+    return mention_ids
+
+
+def test_jira_mentions_work_in_gfm_non_list_block_contexts(
+    adf_validator: Validator,
+) -> None:
+    result = cast(
+        dict[str, Any],
+        markdown_to_adf(
+            "# [~accountId:heading]\n\n"
+            "> [~accountId:blockquote]\n\n"
+            "| Mention |\n"
+            "| --- |\n"
+            "| [~accountId:table] |",
+            jira_mentions=True,
+        ),
+    )
+
+    adf_validator.validate(result)
+    assert _mention_ids(result) == ["heading", "blockquote", "table"]
+
+
+def test_jira_mentions_work_in_tight_gfm_lists(adf_validator: Validator) -> None:
+    result = cast(
+        dict[str, Any],
+        markdown_to_adf(
+            "- [~accountId:tight-first]\n- [~accountId:tight-second]",
+            jira_mentions=True,
+        ),
+    )
+
+    adf_validator.validate(result)
+    assert result["content"][0]["type"] == "bulletList"
+    assert _mention_ids(result) == ["tight-first", "tight-second"]
+
+
+def test_jira_mentions_work_in_loose_gfm_lists(adf_validator: Validator) -> None:
+    result = cast(
+        dict[str, Any],
+        markdown_to_adf(
+            "- [~accountId:loose-first]\n\n- [~accountId:loose-second]",
+            jira_mentions=True,
+        ),
+    )
+
+    adf_validator.validate(result)
+    assert result["content"][0]["type"] == "bulletList"
+    assert _mention_ids(result) == ["loose-first", "loose-second"]
+
+
+def test_jira_mentions_work_in_native_gfm_task_lists(
+    adf_validator: Validator,
+) -> None:
+    result = cast(
+        dict[str, Any],
+        markdown_to_adf("- [ ] [~accountId:task]", jira_mentions=True),
+    )
+
+    adf_validator.validate(result)
+    assert result["content"][0]["type"] == "taskList"
+    assert _mention_ids(result) == ["task"]
+
+
 def test_gfm_task_lists(task_list_adf: dict[str, Any]) -> None:
     markdown = """- [ ] Foo bar
 - [ ] Baz yo"""

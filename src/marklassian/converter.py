@@ -1,10 +1,40 @@
 import copy
 import uuid
+from re import Match
 from typing import Any
 
 import mistune
+from mistune.plugins import PluginRef
 
 from .types import AdfDocument, AdfMark, AdfNode
+
+_JIRA_MENTION_PATTERN = r"\[~(?i:accountid):(?P<id>[^\s\\\]\r\n]+)\]"
+
+
+def _parse_jira_mention(
+    _: mistune.InlineParser,
+    match: Match[str],
+    state: mistune.InlineState,
+) -> int:
+    if state.in_link or state.in_image:
+        state.append_token({"type": "text", "raw": match.group(0)})
+    else:
+        state.append_token(
+            {
+                "type": "jira_mention",
+                "attrs": {"id": match.group("id")},
+            }
+        )
+    return match.end()
+
+
+def _jira_mentions(md: mistune.Markdown) -> None:
+    md.inline.register(
+        "jira_mention",
+        _JIRA_MENTION_PATTERN,
+        _parse_jira_mention,
+        before="link",
+    )
 
 
 def _generate_local_id() -> str:
@@ -164,6 +194,14 @@ def _inline_to_adf(
             if alt_text:
                 result.append(_create_text_node(alt_text, marks))
 
+        elif token_type == "jira_mention":
+            result.append(
+                {
+                    "type": "mention",
+                    "attrs": {"id": token["attrs"]["id"]},
+                }
+            )
+
         elif token_type == "linebreak":
             result.append({"type": "hardBreak"})
 
@@ -228,6 +266,7 @@ _INLINE_TOKEN_TYPES = {
     "strong",
     "strikethrough",
     "link",
+    "jira_mention",
     "codespan",
     "block_text",
 }
@@ -590,10 +629,14 @@ def _tokens_to_adf(tokens: list[dict[str, Any]] | None) -> list[AdfNode]:
     return result
 
 
-def markdown_to_adf(markdown: str) -> AdfDocument:
+def markdown_to_adf(markdown: str, *, jira_mentions: bool = False) -> AdfDocument:
+    plugins: list[PluginRef] = ["strikethrough", "table", "task_lists"]
+    if jira_mentions:
+        plugins.append(_jira_mentions)
+
     md = mistune.create_markdown(
         renderer=None,
-        plugins=["strikethrough", "table", "task_lists"],
+        plugins=plugins,
     )
     result = md(markdown)
     tokens: list[dict[str, Any]] = result if isinstance(result, list) else []
