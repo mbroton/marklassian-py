@@ -55,7 +55,7 @@ print(json.dumps(adf, indent=2))
 
 ## API Reference
 
-### `markdown_to_adf(markdown: str) -> AdfDocument`
+### `markdown_to_adf(markdown: str, *, jira_mentions: bool = False) -> AdfDocument`
 
 Converts a Markdown string to an ADF document object.
 
@@ -78,6 +78,14 @@ class AdfDocument(TypedDict):
     type: Literal["doc"]
     content: list[AdfNode]
 ```
+
+### Jira account mentions
+
+Pass `jira_mentions=True` to convert Jira wiki mentions into ADF mention nodes:
+
+`markdown_to_adf("Hi [~accountId:557057:user-id]", jira_mentions=True)`
+
+This option is disabled by default. Code and escaped mention syntax remain unchanged.
 
 ## Caveats
 

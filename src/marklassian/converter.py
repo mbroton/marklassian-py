@@ -1,10 +1,50 @@
 import copy
 import uuid
+from re import Match
 from typing import Any
 
 import mistune
+from mistune.plugins import PluginRef
 
 from .types import AdfDocument, AdfMark, AdfNode
+
+# Consume malformed recognized candidates to a syntax boundary in one scan.
+_JIRA_MENTION_PATTERN = (
+    r"\[~(?ai:accountid):"
+    r"(?P<id>[^\s\\\]]*)"
+    r"(?:(?P<closed>\])|(?=[\s\\])|$)"
+)
+_JIRA_MENTION_LITERAL_TOKEN = "_jira_mention_literal"
+
+
+def _parse_jira_mention(
+    _: mistune.InlineParser,
+    match: Match[str],
+    state: mistune.InlineState,
+) -> int:
+    if state.in_image:
+        # Mistune only finalizes ordinary text tokens, so this private type
+        # retains the signal needed to preserve complete image alt text.
+        state.append_token({"type": _JIRA_MENTION_LITERAL_TOKEN, "raw": match.group(0)})
+    elif state.in_link or not match.group("id") or not match.group("closed"):
+        state.append_token({"type": "text", "raw": match.group(0)})
+    else:
+        state.append_token(
+            {
+                "type": "jira_mention",
+                "attrs": {"id": match.group("id")},
+            }
+        )
+    return match.end()
+
+
+def _jira_mentions(md: mistune.Markdown) -> None:
+    md.inline.register(
+        "jira_mention",
+        _JIRA_MENTION_PATTERN,
+        _parse_jira_mention,
+        before="link",
+    )
 
 
 def _generate_local_id() -> str:
@@ -40,11 +80,22 @@ def _create_text_node(text: str, marks: list[AdfMark]) -> AdfNode:
     return node
 
 
+def _contains_jira_mention_literal(token: dict[str, Any]) -> bool:
+    if token.get("type") == _JIRA_MENTION_LITERAL_TOKEN:
+        return True
+    return any(
+        _contains_jira_mention_literal(child)
+        for child in token.get("children", [])
+    )
+
+
 def _create_media_node(token: dict[str, Any]) -> AdfNode:
     attrs = token.get("attrs", {})
     children = token.get("children", [])
     alt_text = ""
-    if children and children[0].get("type") == "text":
+    if _contains_jira_mention_literal(token):
+        alt_text = _get_safe_text(token)
+    elif children and children[0].get("type") == "text":
         alt_text = children[0].get("raw", "")
     return {
         "type": "mediaSingle",
@@ -63,31 +114,30 @@ def _create_media_node(token: dict[str, Any]) -> AdfNode:
 
 
 def _merge_adjacent_text_nodes(nodes: list[AdfNode]) -> list[AdfNode]:
-    if not nodes:
-        return []
-
     result: list[AdfNode] = []
-    for node in nodes:
+    index = 0
+
+    while index < len(nodes):
+        node = nodes[index]
         if node.get("type") != "text":
             result.append(node)
+            index += 1
             continue
 
-        if not result:
-            result.append(node)
-            continue
+        marks = node.get("marks", [])
+        parts = [node.get("text", "")]
+        index += 1
+        while (
+            index < len(nodes)
+            and nodes[index].get("type") == "text"
+            and nodes[index].get("marks", []) == marks
+        ):
+            parts.append(nodes[index].get("text", ""))
+            index += 1
 
-        prev = result[-1]
-        if prev.get("type") != "text":
-            result.append(node)
-            continue
-
-        prev_marks = prev.get("marks", [])
-        curr_marks = node.get("marks", [])
-        if prev_marks != curr_marks:
-            result.append(node)
-            continue
-
-        prev["text"] = prev.get("text", "") + node.get("text", "")
+        if len(parts) > 1:
+            node["text"] = "".join(parts)
+        result.append(node)
 
     return result
 
@@ -164,6 +214,14 @@ def _inline_to_adf(
             if alt_text:
                 result.append(_create_text_node(alt_text, marks))
 
+        elif token_type == "jira_mention":
+            result.append(
+                {
+                    "type": "mention",
+                    "attrs": {"id": token["attrs"]["id"]},
+                }
+            )
+
         elif token_type == "linebreak":
             result.append({"type": "hardBreak"})
 
@@ -228,6 +286,7 @@ _INLINE_TOKEN_TYPES = {
     "strong",
     "strikethrough",
     "link",
+    "jira_mention",
     "codespan",
     "block_text",
 }
@@ -590,10 +649,14 @@ def _tokens_to_adf(tokens: list[dict[str, Any]] | None) -> list[AdfNode]:
     return result
 
 
-def markdown_to_adf(markdown: str) -> AdfDocument:
+def markdown_to_adf(markdown: str, *, jira_mentions: bool = False) -> AdfDocument:
+    plugins: list[PluginRef] = ["strikethrough", "table", "task_lists"]
+    if jira_mentions:
+        plugins.append(_jira_mentions)
+
     md = mistune.create_markdown(
         renderer=None,
-        plugins=["strikethrough", "table", "task_lists"],
+        plugins=plugins,
     )
     result = md(markdown)
     tokens: list[dict[str, Any]] = result if isinstance(result, list) else []
