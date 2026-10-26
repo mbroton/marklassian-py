@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
 dependencies = [
-    "mistune>=3.3.4,<3.4",
+    "mistune>=3.3.4,<3.5",
     "typing-extensions>=4.0.0; python_version < '3.11'",
 ]
 
