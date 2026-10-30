@@ -14,7 +14,6 @@ _JIRA_MENTION_PATTERN = (
     r"(?P<id>[^\s\\\]]*)"
     r"(?:(?P<closed>\])|(?=[\s\\])|$)"
 )
-_JIRA_MENTION_LITERAL_TOKEN = "_jira_mention_literal"
 
 
 def _parse_jira_mention(
@@ -22,16 +21,16 @@ def _parse_jira_mention(
     match: Match[str],
     state: mistune.InlineState,
 ) -> int:
-    if state.in_image:
-        # Mistune only finalizes ordinary text tokens, so this private type
-        # retains the signal needed to preserve complete image alt text.
-        state.append_token({"type": _JIRA_MENTION_LITERAL_TOKEN, "raw": match.group(0)})
-    elif state.in_link or not match.group("id") or not match.group("closed"):
+    # Mistune 3.4 parses link and image labels before it knows they are
+    # labels, so the converter handles those contexts. It uses "raw" to
+    # write the mention back as literal text there.
+    if not match.group("id") or not match.group("closed"):
         state.append_token({"type": "text", "raw": match.group(0)})
     else:
         state.append_token(
             {
                 "type": "jira_mention",
+                "raw": match.group(0),
                 "attrs": {"id": match.group("id")},
             }
         )
@@ -80,11 +79,11 @@ def _create_text_node(text: str, marks: list[AdfMark]) -> AdfNode:
     return node
 
 
-def _contains_jira_mention_literal(token: dict[str, Any]) -> bool:
-    if token.get("type") == _JIRA_MENTION_LITERAL_TOKEN:
+def _contains_token_type(token: dict[str, Any], token_type: str) -> bool:
+    if token.get("type") == token_type:
         return True
     return any(
-        _contains_jira_mention_literal(child)
+        _contains_token_type(child, token_type)
         for child in token.get("children", [])
     )
 
@@ -93,7 +92,7 @@ def _create_media_node(token: dict[str, Any]) -> AdfNode:
     attrs = token.get("attrs", {})
     children = token.get("children", [])
     alt_text = ""
-    if _contains_jira_mention_literal(token):
+    if _contains_token_type(token, "jira_mention"):
         alt_text = _get_safe_text(token)
     elif children and children[0].get("type") == "text":
         alt_text = children[0].get("raw", "")
@@ -215,12 +214,15 @@ def _inline_to_adf(
                 result.append(_create_text_node(alt_text, marks))
 
         elif token_type == "jira_mention":
-            result.append(
-                {
-                    "type": "mention",
-                    "attrs": {"id": token["attrs"]["id"]},
-                }
-            )
+            if any(mark["type"] == "link" for mark in marks):
+                result.append(_create_text_node(token["raw"], marks))
+            else:
+                result.append(
+                    {
+                        "type": "mention",
+                        "attrs": {"id": token["attrs"]["id"]},
+                    }
+                )
 
         elif token_type == "linebreak":
             result.append({"type": "hardBreak"})
@@ -292,12 +294,6 @@ _INLINE_TOKEN_TYPES = {
 }
 
 
-def _contains_image(token: dict[str, Any]) -> bool:
-    if token.get("type") == "image":
-        return True
-    return any(_contains_image(child) for child in token.get("children", []))
-
-
 def _task_item_requires_list_fallback(item: dict[str, Any]) -> bool:
     nested_task_list_seen = False
 
@@ -307,7 +303,7 @@ def _task_item_requires_list_fallback(item: dict[str, Any]) -> bool:
             continue
 
         if token_type in _INLINE_TOKEN_TYPES or token_type == "paragraph":
-            if nested_task_list_seen or _contains_image(token):
+            if nested_task_list_seen or _contains_token_type(token, "image"):
                 return True
             continue
 
@@ -491,7 +487,7 @@ def _process_list_item(item: dict[str, Any]) -> AdfNode:
     for token in item.get("children", []):
         token_type = token.get("type", "")
 
-        if token_type in _INLINE_TOKEN_TYPES and not _contains_image(token):
+        if token_type in _INLINE_TOKEN_TYPES and not _contains_token_type(token, "image"):
             current_paragraph_tokens.append(token)
         else:
             if current_paragraph_tokens:
