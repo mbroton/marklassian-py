@@ -226,6 +226,26 @@ def test_jira_mention_link_context_remains_non_mention(
     ]
 
 
+def test_jira_mention_in_formatted_link_label_keeps_all_marks(
+    adf_validator: Validator,
+) -> None:
+    result = markdown_to_adf(
+        "[before **bold [~accountId:linked-id]**](https://example.test)",
+        jira_mentions=True,
+    )
+
+    link = {"type": "link", "attrs": {"href": "https://example.test"}}
+    adf_validator.validate(result)
+    assert result["content"][0]["content"] == [
+        {"type": "text", "text": "before ", "marks": [link]},
+        {
+            "type": "text",
+            "text": "bold [~accountId:linked-id]",
+            "marks": [link, {"type": "strong"}],
+        },
+    ]
+
+
 @pytest.mark.parametrize(
     ("source", "expected_alt"),
     [
